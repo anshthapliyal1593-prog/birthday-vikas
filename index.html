@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Happy Birthday Vikas!</title>
+  <style>
+    :root{--fg:#ff0066;--muted:#333}
+    html,body{height:100%;margin:0;font-family:Inter, "Comic Sans MS", cursive, sans-serif}
+    body{
+      display:flex;flex-direction:column;
+      background: linear-gradient(to top, #ffecd2, #fcb69f);
+      overflow:hidden;
+    }
+    header{
+      z-index:200; text-align:center; padding:14px 8px;
+    }
+    h1{margin:0; color:var(--fg); text-shadow:0 2px 4px rgba(255,255,255,.6); font-size:clamp(20px,4vw,36px)}
+    #instruction{margin-top:8px; font-size:clamp(12px,2.5vw,20px); color:var(--muted)}
+    #scoreContainer{position:fixed; left:14px; top:86px; z-index:200; font-size:18px; color:var(--muted)}
+    #finalMessage{
+      position:fixed; left:50%; top:50%; transform:translate(-50%,-50%);
+      display:none; z-index:300; text-align:center;
+      background:rgba(255,255,255,0.9); padding:18px 26px; border-radius:12px;
+      box-shadow:0 8px 30px rgba(0,0,0,0.15);
+      font-size:clamp(18px,4vw,40px); color:var(--fg);
+    }
+    #canvasWrap{flex:1; width:100%; height:100%; position:relative}
+    canvas{display:block; width:100%; height:100%}
+    /* small hint bubble */
+    #hint{
+      position:fixed; right:14px; top:86px; z-index:200; background:rgba(255,255,255,0.9);
+      padding:8px 12px; border-radius:10px; box-shadow:0 6px 20px rgba(0,0,0,0.08);
+      font-size:14px;
+    }
+    /* button to start music if blocked */
+    #startBtn{
+      position:fixed; left:50%; bottom:20px; transform:translateX(-50%);
+      z-index:220; padding:10px 18px; border-radius:999px; border:none;
+      background:var(--fg); color:white; font-weight:600; display:none;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>🎉 Happy Birthday Vikas! 🎉</h1>
+    <div id="instruction">🎈 Tap / Click the balloons to pop them — pop 10 to unlock your surprise!</div>
+  </header>
+
+  <div id="scoreContainer">Score: <span id="score">0</span></div>
+  <div id="hint">Tip: balloons glow when you hover (or touch) them.</div>
+  <div id="canvasWrap"><canvas id="gameCanvas"></canvas></div>
+  <div id="finalMessage">🎂 Hurray! Happy Birthday Vikas! 🎂<div style="font-size:16px;margin-top:8px">You popped 10 balloons — enjoy your surprise! 🎁</div></div>
+
+  <!-- Audio files (must be in same folder) -->
+  <audio id="birthdayMusic" src="birthday_song.mp3" loop></audio>
+  <audio id="popSound" src="pop.mp3"></audio>
+
+  <!-- fallback visible button for autoplay-block -->
+  <button id="startBtn">Tap to Start Music & Fun</button>
+
+<script>
+/* Responsive canvas setup */
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+function resizeCanvas(){
+  canvas.width = canvas.clientWidth * devicePixelRatio;
+  canvas.height = canvas.clientHeight * devicePixelRatio;
+  ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
+}
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas();
+
+/* Elements */
+const scoreEl = document.getElementById('score');
+const finalMessage = document.getElementById('finalMessage');
+const popSound = document.getElementById('popSound');
+const music = document.getElementById('birthdayMusic');
+const startBtn = document.getElementById('startBtn');
+
+let score = 0;
+const targetScore = 10;
+const balloons = [];
+const confetti = [];
+const totalBalloons = 20;
+
+/* Balloon class with hover hint */
+class Balloon {
+  constructor(){
+    this.reset(true);
+    this.radius = 26 + Math.random()*20;
+    this.color = `hsl(${Math.random()*360} 80% 60%)`;
+    this.speed = 0.6 + Math.random()*1.6;
+    this.hover = false;
+  }
+  reset(initial=false){
+    this.x = Math.random() * canvas.clientWidth;
+    this.y = initial ? (canvas.clientHeight + Math.random()*400) : (canvas.clientHeight + this.radius + Math.random()*200);
+  }
+  update(){
+    this.y -= this.speed;
+    if(this.y + this.radius < -10) this.reset();
+  }
+  draw(){
+    ctx.save();
+    // glow when hovered
+    if(this.hover){
+      ctx.shadowColor = 'rgba(255,255,255,0.8)';
+      ctx.shadowBlur = 18;
+      ctx.globalAlpha = 0.95;
+    } else ctx.globalAlpha = 0.95;
+    // balloon body
+    ctx.beginPath();
+    ctx.ellipse(this.x, this.y, this.radius*0.9, this.radius, 0, 0, Math.PI*2);
+    const g = ctx.createLinearGradient(this.x, this.y - this.radius, this.x, this.y+this.radius);
+    g.addColorStop(0, this._lighten(this.color,20));
+    g.addColorStop(1, this.color);
+    ctx.fillStyle = g;
+    ctx.fill();
+    ctx.closePath();
+    // small highlight
+    ctx.beginPath();
+    ctx.ellipse(this.x - this.radius*0.3, this.y - this.radius*0.5, this.radius*0.22, this.radius*0.12, 0, 0, Math.PI*2);
+    ctx.fillStyle = 'rgba(255,255,255,0.6)';
+    ctx.fill();
+    ctx.closePath();
+    // string
+    ctx.beginPath();
+    ctx.moveTo(this.x, this.y + this.radius);
+    ctx.quadraticCurveTo(this.x + 6, this.y + this.radius + 20, this.x - 6, this.y + this.radius + 40);
+    ctx.strokeStyle = 'rgba(50,50,50,0.2)';
+    ctx.lineWidth = 1.2;
+    ctx.stroke();
+    ctx.restore();
+  }
+  _lighten(hsl, amt){
+    // hsl provided like "hsl(h s% l%)"
+    return hsl.replace(/(\d+)%?\)/, (m, p)=> (Math.min(100, Number(p) + amt)) + '%)');
+  }
+}
+
+/* Confetti pieces */
+class Confetti {
+  constructor(){
+    this.x = Math.random()*canvas.clientWidth;
+    this.y = Math.random()*canvas.clientHeight;
+    this.size = 4 + Math.random()*6;
+    this.speedY = 0.8 + Math.random()*2;
+    this.speedX = Math.random()*1.6 - 0.8;
+    this.color = `hsl(${Math.random()*360} 80% 60%)`;
+  }
+  update(){
+    this.x += this.speedX;
+    this.y += this.speedY;
+    if(this.y > canvas.clientHeight+10){ this.y = -10; this.x = Math.random()*canvas.clientWidth; }
+  }
+  draw(){
+    ctx.fillStyle = this.color;
+    ctx.fillRect(this.x, this.y, this.size, this.size);
+  }
+}
+
+/* Init objects */
+for(let i=0;i<totalBalloons;i++) balloons.push(new Balloon());
+for(let i=0;i<120;i++) confetti.push(new Confetti());
+
+/* Animate loop */
+function animate(){
+  ctx.clearRect(0,0,canvas.clientWidth, canvas.clientHeight);
+  // draw confetti behind
+  confetti.forEach(c => { c.update(); c.draw(); });
+  // balloons
+  balloons.forEach(b => { b.update(); b.draw(); });
+  requestAnimationFrame(animate);
+}
+animate();
+
+/* Utility: get position from mouse or touch */
+function getPointerPos(evt){
+  const rect = canvas.getBoundingClientRect();
+  let x,y;
+  if(evt.touches && evt.touches[0]){ x = evt.touches[0].clientX - rect.left; y = evt.touches[0].clientY - rect.top; }
+  else { x = evt.clientX - rect.left; y = evt.clientY - rect.top; }
+  return {x, y};
+}
+
+/* Hover effect for desktop mouse move, and touchstart for hint */
+function updateHover(e){
+  const p = getPointerPos(e);
+  balloons.forEach(b=>{
+    const dx = p.x - b.x, dy = p.y - b.y;
+    b.hover = Math.sqrt(dx*dx + dy*dy) < b.radius + 8;
+  });
+}
+canvas.addEventListener('mousemove', updateHover);
+canvas.addEventListener('touchmove', updateHover);
+
+/* Click / tap to pop */
+function tryPop(e){
+  const p = getPointerPos(e);
+  for(let i=0;i<balloons.length;i++){
+    const b = balloons[i];
+    const dx = p.x - b.x, dy = p.y - b.y;
+    if(Math.sqrt(dx*dx + dy*dy) < b.radius){
+      // pop
+      score++;
+      scoreEl.textContent = score;
+      // play sound
+      try{ popSound.currentTime = 0; popSound.play(); }catch(err){}
+      // reset balloon
+      b.reset();
+      // show confetti burst (quick visual)
+      for(let k=0;k<12;k++){
+        const c = new Confetti();
+        c.x = b.x; c.y = b.y;
+        confetti.push(c);
+      }
+      // check win
+      if(score >= targetScore){
+        finalMessage.style.display = 'block';
+        // small celebratory music cue if available
+      }
+      break;
+    }
+  }
+  // ensure music starts on first user gesture if blocked
+  ensureMusicPlaying();
+}
+canvas.addEventListener('click', tryPop);
+canvas.addEventListener('touchstart', tryPop, {passive:true});
+
+/* Autoplay handling: show start button if blocked */
+function ensureMusicPlaying(){
+  if(music.paused){
+    // try to play
+    music.play().then(()=> {
+      startBtn.style.display = 'none';
+    }).catch(()=> {
+      // show button to ask user to start
+      startBtn.style.display = 'block';
+    });
+  } else startBtn.style.display = 'none';
+}
+startBtn.addEventListener('click', ()=> {
+  music.play().catch(()=>{});
+  startBtn.style.display = 'none';
+});
+
+/* On first user gesture, ensure music starts (mobile browsers require user gesture) */
+let firstGesture = false;
+function onFirstGesture(){
+  if(firstGesture) return;
+  firstGesture = true;
+  music.play().catch(()=>{ startBtn.style.display = 'block'; });
+  // resize canvas properly now (some phones report sizes after first gesture)
+  resizeCanvas();
+  window.removeEventListener('touchstart', onFirstGesture);
+  window.removeEventListener('click', onFirstGesture);
+}
+window.addEventListener('touchstart', onFirstGesture, {passive:true});
+window.addEventListener('click', onFirstGesture);
+
+/* Initial attempt to play music (may be blocked) */
+ensureMusicPlaying();
+
+/* Debug helper (optional): open console on errors */
+window.addEventListener('error', (ev)=> console.error('PAGE ERROR', ev.error));
+</script>
+</body>
+</html>
